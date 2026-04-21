@@ -203,9 +203,65 @@ int main() {
         if (!cout.good()) return 0;
         return 0;
     } else {
-        // Cheat mode: output the program as-is (identity transform)
-        // This ensures functional equivalence; whitespace preserved
-        cout<<input;
+        // Cheat mode: rename identifiers and canonicalize formatting
+        string stripped = strip_comments(input);
+        auto toks = tokenize(stripped);
+        // Builtin and syntax tokens to keep unchanged
+        static const unordered_set<string> keep = {
+            "(", ")",
+            "function","block","set","if","for","return",
+            "+","-","*","/","%","<",">","<=",">=","==","!=","||","&&","!",
+            "scan","print","array.create","array.scan","array.print","array.get","array.set"
+        };
+        // Also preserve entrypoint name 'main'
+        unordered_set<string> preserve_id = {"main"};
+        unordered_map<string,string> mp;
+        int counter = 1;
+        auto gen_name = [&](){ return string("v") + to_string(counter++); };
+        // Produce renamed token stream
+        vector<string> out_toks;
+        out_toks.reserve(toks.size());
+        for (const string &t : toks) {
+            if (t == "(" || t == ")") {
+                out_toks.push_back(t);
+            } else if (keep.count(t)) {
+                out_toks.push_back(t);
+            } else if (is_integer_token(t)) {
+                out_toks.push_back(t);
+            } else {
+                if (preserve_id.count(t)) { out_toks.push_back(t); continue; }
+                auto it = mp.find(t);
+                if (it == mp.end()) {
+                    string name;
+                    do { name = gen_name(); } while (keep.count(name));
+                    it = mp.emplace(t, name).first;
+                }
+                out_toks.push_back(it->second);
+            }
+        }
+        // Reconstruct with canonical spacing: no space after '(', no space before ')', single spaces elsewhere
+        string out;
+        out.reserve(stripped.size());
+        auto ends_with_space_like = [&](const string &s){
+            if (s.empty()) return true;
+            char c = s.back();
+            return c==' ' || c=='\n' || c=='\t' || c=='(';
+        };
+        for (const string &t : out_toks) {
+            if (t == "(") {
+                out.push_back('(');
+            } else if (t == ")") {
+                // remove any trailing space before ')'
+                while (!out.empty() && out.back()==' ') out.pop_back();
+                out.push_back(')');
+            } else {
+                if (!ends_with_space_like(out)) out.push_back(' ');
+                out += t;
+            }
+        }
+        // Ensure trailing newline for cleanliness
+        if (out.empty() || out.back()!='\n') out.push_back('\n');
+        cout << out;
         return 0;
     }
 }
